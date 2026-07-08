@@ -37,6 +37,7 @@ interface ArticleRow {
   author_name: string;
   is_deleted: boolean;
   _status: string;
+  tag: string;
 }
 
 const columnDefs = ref<ColDef[]>([
@@ -122,11 +123,20 @@ const columnDefs = ref<ColDef[]>([
     minWidth: 120,
     cellClass: 'flex justify-center items-center',
   },
+  {
+    headerName: '标签',
+    field: 'tag',
+    cellDataType: 'text',
+    filter: 'agTextColumnFilter',
+    minWidth: 100,
+    cellClass: 'flex justify-center items-center',
+  },
 ]);
 
 const gridOptions: GridOptions = defu(
   {
     getRowId: (params: GetRowIdParams) => `${params.data.fakeid}:${params.data.aid}`,
+    rowSelection: { mode: 'multiRow' },
     statusBar: {
       statusPanels: [
         {
@@ -142,6 +152,12 @@ const gridOptions: GridOptions = defu(
 const gridApi = shallowRef<GridApi | null>(null);
 function onGridReady(params: GridReadyEvent) {
   gridApi.value = params.api;
+}
+
+// 选中状态
+const selectedRows = ref<ArticleRow[]>([]);
+function onSelectionChanged() {
+  selectedRows.value = gridApi.value?.getSelectedRows() || [];
 }
 
 // 加载状态
@@ -176,17 +192,31 @@ function parseDate(dateStr: string | undefined): Date | undefined {
 const startTimeStr = ref<string>(getTodayStr());
 const endTimeStr = ref<string>(getTodayStr());
 
+// 标题搜索
+const searchTitle = ref<string>('');
+
+// 标签筛选
+const selectedTag = ref<string | undefined>();
+const filterTags = ref<string[]>([]);
+
 // 计算属性，用于实际查询
 const startTime = computed(() => parseDate(startTimeStr.value));
 const endTime = computed(() => parseDate(endTimeStr.value));
 
-// 初始化加载公众号列表
+// 初始化加载公众号列表和标签
 onMounted(async () => {
   const accountList = await getAllInfo();
   accounts.value = accountList.map(a => ({
     fakeid: a.fakeid,
     nickname: a.nickname,
   }));
+  // 加载标签列表
+  try {
+    const result = await $fetch<{ tags: string[] }>('/api/storage/articles/tags');
+    filterTags.value = result.tags;
+  } catch (error) {
+    console.error('加载标签失败:', error);
+  }
   // 初始加载文章列表
   loadArticles();
 });
@@ -213,6 +243,14 @@ async function loadArticles() {
       const end = new Date(endTime.value);
       end.setHours(23, 59, 59, 999);
       params.endTime = Math.floor(end.getTime() / 1000);
+    }
+
+    if (searchTitle.value.trim()) {
+      params.title = searchTitle.value.trim();
+    }
+
+    if (selectedTag.value) {
+      params.tag = selectedTag.value;
     }
 
     const result = await $fetch<{
@@ -249,6 +287,8 @@ function resetFilters() {
   selectedFakeid.value = undefined;
   startTimeStr.value = getTodayStr();
   endTimeStr.value = getTodayStr();
+  searchTitle.value = '';
+  selectedTag.value = undefined;
   currentPage.value = 1;
   loadArticles();
 }
@@ -316,6 +356,79 @@ async function handleSync() {
     syncLoading.value = false;
   }
 }
+
+// 标签相关（批量归类）
+const allTags = ref<string[]>([]);
+const tagModalOpen = ref(false);
+const batchTag = ref<string>('');
+const tagLoading = ref(false);
+
+// 加载已有标签
+async function loadTags() {
+  try {
+    const result = await $fetch<{ tags: string[] }>('/api/storage/articles/tags');
+    allTags.value = result.tags;
+  } catch (error) {
+    console.error('加载标签失败:', error);
+  }
+}
+
+// 打开标签弹窗
+function openTagModal() {
+  if (selectedRows.value.length === 0) {
+    toast.add({
+      title: '提示',
+      description: '请先选择文章',
+      color: 'yellow',
+    });
+    return;
+  }
+  batchTag.value = '';
+  tagModalOpen.value = true;
+  loadTags();
+}
+
+// 确认设置标签
+async function confirmSetTag() {
+  if (!batchTag.value.trim()) {
+    toast.add({
+      title: '提示',
+      description: '请输入或选择标签',
+      color: 'yellow',
+    });
+    return;
+  }
+
+  tagLoading.value = true;
+  try {
+    const ids = selectedRows.value.map(row => `${row.fakeid}:${row.aid}`);
+    const result = await $fetch<{ success: boolean; message: string }>('/api/storage/articles/tag', {
+      method: 'POST',
+      body: {
+        ids,
+        tag: batchTag.value.trim(),
+      },
+    });
+
+    if (result.success) {
+      toast.add({
+        title: '成功',
+        description: result.message,
+        color: 'green',
+      });
+      tagModalOpen.value = false;
+      loadArticles();
+    }
+  } catch (error) {
+    toast.add({
+      title: '失败',
+      description: error instanceof Error ? error.message : '设置标签失败',
+      color: 'red',
+    });
+  } finally {
+    tagLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -325,6 +438,27 @@ async function handleSync() {
     </Teleport>
 
     <div class="flex flex-col h-full divide-y divide-gray-200">
+      <!-- 操作按钮区域 -->
+      <div class="flex items-center gap-2 px-3 py-2 bg-slate-2 dark:bg-slate-800">
+        <UButton
+          :loading="syncLoading"
+          color="green"
+          label="同步"
+          icon="i-lucide:refresh-cw"
+          @click="handleSync"
+        />
+        <UButton
+          :disabled="selectedRows.length === 0"
+          color="blue"
+          label="批量归类"
+          icon="i-lucide:tag"
+          @click="openTagModal"
+        />
+        <span v-if="selectedRows.length > 0" class="text-sm text-slate-11">
+          已选择 {{ selectedRows.length }} 篇文章
+        </span>
+      </div>
+
       <!-- 筛选区域 -->
       <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 px-3 py-2">
         <div class="flex flex-wrap items-center gap-2">
@@ -334,8 +468,21 @@ async function handleSync() {
             placeholder="选择公众号"
             value-attribute="fakeid"
             option-attribute="nickname"
-            class="w-64"
+            class="w-32"
             searchable
+            clearable
+          />
+          <input
+            v-model="searchTitle"
+            type="text"
+            placeholder="标题搜索"
+            class="border border-slate-3 rounded px-2 py-1 text-sm dark:bg-slate-800 w-40"
+          />
+          <USelectMenu
+            v-model="selectedTag"
+            :options="filterTags"
+            placeholder="选择标签"
+            class="w-32"
             clearable
           />
           <div class="flex items-center gap-1">
@@ -357,14 +504,6 @@ async function handleSync() {
         </div>
         <div class="text-sm text-slate-11">
           共 {{ totalItems }} 篇文章
-          <UButton
-            :loading="syncLoading"
-            color="green"
-            label="同步"
-            icon="i-lucide:refresh-cw"
-            class="ml-2"
-            @click="handleSync"
-          />
         </div>
       </header>
 
@@ -376,6 +515,7 @@ async function handleSync() {
           :columnDefs="columnDefs"
           :gridOptions="gridOptions"
           @grid-ready="onGridReady"
+          @selection-changed="onSelectionChanged"
         ></ag-grid-vue>
       </div>
 
@@ -409,5 +549,38 @@ async function handleSync() {
         </div>
       </footer>
     </div>
+
+    <!-- 标签弹窗 -->
+    <UModal v-model="tagModalOpen">
+      <UCard>
+        <template #header>
+          <h3 class="text-lg font-semibold">批量设置标签</h3>
+        </template>
+        <div class="space-y-4">
+          <p class="text-sm text-slate-11">
+            为 {{ selectedRows.length }} 篇文章设置标签
+          </p>
+          <USelectMenu
+            v-model="batchTag"
+            :options="allTags"
+            placeholder="选择已有标签或输入新标签"
+            searchable
+            clearable
+            creatable
+          />
+        </div>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton color="white" label="取消" @click="tagModalOpen = false" />
+            <UButton
+              :loading="tagLoading"
+              color="primary"
+              label="确认"
+              @click="confirmSetTag"
+            />
+          </div>
+        </template>
+      </UCard>
+    </UModal>
   </div>
 </template>

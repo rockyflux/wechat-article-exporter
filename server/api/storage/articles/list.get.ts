@@ -13,11 +13,15 @@ export default defineEventHandler(async event => {
   const fakeid = query.fakeid ? String(query.fakeid) : undefined;
   const startTime = query.startTime ? Number(query.startTime) : undefined;
   const endTime = query.endTime ? Number(query.endTime) : undefined;
+  const title = query.title ? String(query.title) : undefined;
+  const tag = query.tag ? String(query.tag) : undefined;
 
   const result = await mysqlGetArticleList({
     fakeid,
     startTime,
     endTime,
+    title,
+    tag,
     page,
     pageSize,
   });

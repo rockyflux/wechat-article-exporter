@@ -49,6 +49,7 @@ function rowToArticle(row: RowDataPacket): Record<string, unknown> {
     create_time: createTime,
     publish_time: publishTime,
     db_time: dbTime,
+    tag: row.tag ?? '',
     is_deleted: !!row.is_deleted,
     _status: row.status,
     _single: !!row.is_single,
@@ -156,6 +157,8 @@ export interface ArticleListQuery {
   fakeid?: string;
   startTime?: number;
   endTime?: number;
+  title?: string;
+  tag?: string;
   page: number;
   pageSize: number;
 }
@@ -170,7 +173,7 @@ export interface ArticleListResult {
 export async function mysqlGetArticleList(query: ArticleListQuery): Promise<ArticleListResult> {
   return withMysql(async () => {
     const pool = getMysqlPool();
-    const { fakeid, startTime, endTime, page, pageSize } = query;
+    const { fakeid, startTime, endTime, title, tag, page, pageSize } = query;
     
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -188,6 +191,16 @@ export async function mysqlGetArticleList(query: ArticleListQuery): Promise<Arti
     if (endTime) {
       whereClause += ' AND publish_time <= ?';
       params.push(endTime);
+    }
+
+    if (title) {
+      whereClause += ' AND title LIKE ?';
+      params.push(`%${title}%`);
+    }
+
+    if (tag) {
+      whereClause += ' AND tag = ?';
+      params.push(tag);
     }
     
     // 查询总数
@@ -773,6 +786,40 @@ export async function mysqlCleanExpiredAuthKeys(): Promise<number> {
     const [result] = await pool.query<RowDataPacket[]>('DELETE FROM wx_auth_keys WHERE expire_time <= ?', [
       Math.floor(Date.now() / 1000),
     ]);
+    return result.affectedRows ?? 0;
+  });
+}
+
+// ============ 标签相关操作 ============
+
+/**
+ * 获取所有已使用的标签（去重）
+ */
+export async function mysqlGetAllTags(): Promise<string[]> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query<RowDataPacket[]>(
+      "SELECT DISTINCT tag FROM wx_articles WHERE tag != '' ORDER BY tag"
+    );
+    return rows.map(row => String(row.tag));
+  });
+}
+
+/**
+ * 批量设置文章标签
+ * @param ids 文章ID列表 (格式: fakeid:aid)
+ * @param tag 标签名称
+ */
+export async function mysqlBatchSetTag(ids: string[], tag: string): Promise<number> {
+  return withMysql(async () => {
+    if (ids.length === 0) return 0;
+    
+    const pool = getMysqlPool();
+    const placeholders = ids.map(() => '?').join(', ');
+    const [result] = await pool.query<RowDataPacket[]>(
+      `UPDATE wx_articles SET tag = ? WHERE id IN (${placeholders})`,
+      [tag, ...ids]
+    );
     return result.affectedRows ?? 0;
   });
 }

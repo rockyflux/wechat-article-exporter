@@ -30,6 +30,7 @@ const TABLES = [
     publish_time BIGINT NOT NULL,
     create_time BIGINT NOT NULL,
     db_time BIGINT NOT NULL DEFAULT 0,
+    tag VARCHAR(255) NOT NULL DEFAULT '',
     data JSON NOT NULL,
     is_deleted TINYINT(1) NOT NULL DEFAULT 0,
     status VARCHAR(64) NOT NULL DEFAULT '',
@@ -37,7 +38,8 @@ const TABLES = [
     INDEX idx_fakeid_create_time (fakeid, create_time),
     INDEX idx_link (link(191)),
     INDEX idx_publish_time (publish_time),
-    INDEX idx_db_time (db_time)
+    INDEX idx_db_time (db_time),
+    INDEX idx_tag (tag)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS wx_html (
@@ -153,6 +155,10 @@ async function migrateWxArticles(pool: ReturnType<typeof getMysqlPool>): Promise
   if (!(await columnExists(pool, 'wx_articles', 'db_time'))) {
     await pool.query('ALTER TABLE wx_articles ADD COLUMN db_time BIGINT NOT NULL DEFAULT 0 AFTER create_time');
     await pool.query('UPDATE wx_articles SET db_time = create_time WHERE db_time = 0');
+  }
+
+  if (!(await columnExists(pool, 'wx_articles', 'tag'))) {
+    await pool.query("ALTER TABLE wx_articles ADD COLUMN tag VARCHAR(255) NOT NULL DEFAULT '' AFTER db_time");
   }
 }
 
