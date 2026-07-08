@@ -23,6 +23,7 @@ export default defineNuxtConfig({
       password: process.env.MYSQL_PASSWORD || '',
     },
     debugMpRequest: false,
+    appAccessKey: process.env.APP_ACCESS_KEY || '',
   },
   app: {
     head: {

@@ -84,6 +84,20 @@ const columnDefs = ref<ColDef[]>([
     minWidth: 200,
   },
   {
+    headerName: '发布时间',
+    field: 'publish_time',
+    valueGetter: p => p.data?.publish_time ?? p.data?.create_time,
+    valueFormatter: p => formatTimeStamp(p.value),
+    filter: 'agDateColumnFilter',
+    filterParams: createDateColumnFilterParams(),
+    filterValueGetter: (params: ValueGetterParams) => {
+      const publishTime = params.data?.publish_time ?? params.data?.create_time;
+      return new Date(publishTime * 1000);
+    },
+    minWidth: 180,
+    cellClass: 'flex justify-center items-center font-mono',
+  },
+  {
     headerName: '封面',
     field: 'cover',
     sortable: false,
@@ -117,20 +131,6 @@ const columnDefs = ref<ColDef[]>([
     },
     minWidth: 180,
     initialHide: true,
-    cellClass: 'flex justify-center items-center font-mono',
-  },
-  {
-    headerName: '发布时间',
-    field: 'publish_time',
-    valueGetter: p => p.data?.publish_time ?? p.data?.create_time,
-    valueFormatter: p => formatTimeStamp(p.value),
-    filter: 'agDateColumnFilter',
-    filterParams: createDateColumnFilterParams(),
-    filterValueGetter: (params: ValueGetterParams) => {
-      const publishTime = params.data?.publish_time ?? params.data?.create_time;
-      return new Date(publishTime * 1000);
-    },
-    minWidth: 180,
     cellClass: 'flex justify-center items-center font-mono',
   },
   {
@@ -373,24 +373,30 @@ watch(selectedAccount, newVal => {
 
 async function switchTableData(fakeid: string) {
   loading.value = true;
-  const data = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
-  const articles: Article[] = data.map(article => ({
-    ...article,
-    publish_time: article.publish_time ?? article.create_time,
-    contentDownload: false,
-    commentDownload: false,
-  }));
-  globalRowData = articles.filter(article => (hideDeleted.value ? !article.is_deleted : true));
-  gridApi.value?.setGridOption('rowData', globalRowData);
-  loading.value = false;
+  try {
+    const data = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
+    const articles: Article[] = data.map(article => ({
+      ...article,
+      publish_time: article.publish_time ?? article.create_time,
+      contentDownload: false,
+      commentDownload: false,
+    }));
+    globalRowData = articles.filter(article => (hideDeleted.value ? !article.is_deleted : true));
+    gridApi.value?.setGridOption('rowData', globalRowData);
+    await refreshDownloadStatus({ silent: true });
+  } finally {
+    loading.value = false;
+  }
 }
 
-async function refreshDownloadStatus() {
+async function refreshDownloadStatus(options: { silent?: boolean } = {}) {
   if (globalRowData.length === 0) {
     return;
   }
 
-  refreshingStatus.value = true;
+  if (!options.silent) {
+    refreshingStatus.value = true;
+  }
   try {
     const statusMap = await getArticlesDownloadStatus(globalRowData.map(article => article.link));
     for (const article of globalRowData) {
@@ -410,8 +416,12 @@ async function refreshDownloadStatus() {
       }
       updateRow(article);
     }
+  } catch (error) {
+    console.error('刷新下载状态失败:', error);
   } finally {
-    refreshingStatus.value = false;
+    if (!options.silent) {
+      refreshingStatus.value = false;
+    }
   }
 }
 

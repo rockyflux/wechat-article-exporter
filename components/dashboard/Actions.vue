@@ -34,16 +34,7 @@ const isCredentialActive = computed(() => credentialState.value === 'active');
 
 <template>
   <ul class="hidden md:flex items-center gap-5">
-    <!-- 商业版「公号三刀」 -->
-    <li>
-      <UTooltip text="商业版 · 公号三刀（更稳定 · 免代理）">
-        <UIcon
-          @click="gotoLink('https://github.com/zoro-build/wechat')"
-          name="i-lucide:crown"
-          class="size-7 text-amber-400 hover:text-amber-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
-    </li>
+    
 
     <!-- 通知 -->
     <!--    <li>-->
@@ -54,15 +45,7 @@ const isCredentialActive = computed(() => credentialState.value === 'active');
     <!--      </UTooltip>-->
     <!--    </li>-->
 
-    <li>
-      <UTooltip text="加入QQ群">
-        <UIcon
-          @click="modal.open(QQGroupModal)"
-          name="i-tdesign:logo-qq-filled"
-          class="size-7 text-zinc-400 hover:text-blue-500 cursor-pointer transition-colors"
-        />
-      </UTooltip>
-    </li>
+   
 
     <!-- Credential -->
     <li>

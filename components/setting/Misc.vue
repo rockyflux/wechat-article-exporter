@@ -91,6 +91,10 @@
 
       <SyncDateRangeControl select-class="w-1/2" />
     </div>
+
+    <div v-if="appAuthEnabled" class="mt-5 pt-5 border-t border-slate-200">
+      <UButton color="gray" variant="outline" :loading="appLogoutLoading" @click="appLogout">退出应用登录</UButton>
+    </div>
   </UCard>
 </template>
 
@@ -98,4 +102,25 @@
 import type { Preferences } from '~/types/preferences';
 
 const preferences = usePreferences() as unknown as Ref<Preferences>;
+const appAuthEnabled = ref(false);
+const appLogoutLoading = ref(false);
+
+onMounted(async () => {
+  try {
+    const session = await $fetch<{ enabled: boolean; authenticated: boolean }>('/api/auth/session');
+    appAuthEnabled.value = session.enabled && session.authenticated;
+  } catch {
+    appAuthEnabled.value = false;
+  }
+});
+
+async function appLogout() {
+  appLogoutLoading.value = true;
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' });
+    await navigateTo('/login');
+  } finally {
+    appLogoutLoading.value = false;
+  }
+}
 </script>

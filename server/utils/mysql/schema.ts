@@ -15,6 +15,12 @@ const TABLES = [
     last_update_time BIGINT NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
+  `CREATE TABLE IF NOT EXISTS wx_preferences (
+    id INT PRIMARY KEY DEFAULT 1,
+    data JSON NOT NULL,
+    update_time BIGINT NOT NULL DEFAULT 0
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
   `CREATE TABLE IF NOT EXISTS wx_articles (
     id VARCHAR(128) PRIMARY KEY,
     fakeid VARCHAR(64) NOT NULL,

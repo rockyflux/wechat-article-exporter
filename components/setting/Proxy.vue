@@ -57,14 +57,16 @@ const proxyList = computed(() => {
     .filter(line => line.length > 0 && line.startsWith('http'));
 });
 
-onMounted(() => {
-  try {
-    const configuredProxyList = (preferences.value as Preferences).privateProxyList;
-    if (configuredProxyList.length > 0) {
-      textareaValue.value = configuredProxyList.join('\n');
+// 监听 preferences 变化，加载完成后回显
+watch(
+  () => preferences.value.privateProxyList,
+  newList => {
+    if (newList && newList.length > 0) {
+      textareaValue.value = newList.join('\n');
     }
-  } catch (e) {}
-});
+  },
+  { immediate: true }
+);
 
 const saveBtnText = ref('保存');
 async function save() {

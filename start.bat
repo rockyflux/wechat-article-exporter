@@ -1,7 +1,11 @@
 @echo off
 chcp 65001 >nul
 setlocal
-cd /d "%~dp0"
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+echo [信息] 工作目录: %CD%
+echo [信息] 正在检查运行环境...
 
 where node >nul 2>&1
 if errorlevel 1 (
@@ -14,9 +18,16 @@ if errorlevel 1 (
     )
 )
 
-for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":3000" ^| findstr "LISTENING"') do (
-    echo [提示] 开发服务器已在运行: http://localhost:3000/  (PID: %%a)
+where npm >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未找到 npm，请检查 Node.js 安装是否完整
     pause
+    exit /b 1
+)
+
+netstat -ano 2>nul | findstr /R /C:":3000 .*LISTENING" >nul
+if not errorlevel 1 (
+    echo [提示] 开发服务器已在运行: http://localhost:3000/
     exit /b 0
 )
 
@@ -30,7 +41,10 @@ if not exist "node_modules\" (
     )
 )
 
-echo [信息] 正在启动开发服务器...
-start "wechat-article-exporter" cmd /k "cd /d "%~dp0" && npm run dev"
-echo [完成] 已在新窗口启动，访问 http://localhost:3000/
-timeout /t 3 >nul
+echo [信息] 正在启动开发服务器（当前窗口输出日志）...
+call npm run dev
+if errorlevel 1 (
+    echo [错误] 开发服务器启动失败，请检查上方日志
+    pause
+    exit /b 1
+)

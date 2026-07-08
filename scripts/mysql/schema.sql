@@ -6,6 +6,13 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- 用户偏好设置
+CREATE TABLE IF NOT EXISTS wx_preferences (
+  id INT PRIMARY KEY DEFAULT 1,
+  data JSON NOT NULL,
+  update_time BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 公众号账号缓存
 CREATE TABLE IF NOT EXISTS wx_accounts (
   fakeid VARCHAR(64) PRIMARY KEY,
