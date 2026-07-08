@@ -29,12 +29,15 @@ const TABLES = [
     title VARCHAR(512) NOT NULL DEFAULT '',
     publish_time BIGINT NOT NULL,
     create_time BIGINT NOT NULL,
+    db_time BIGINT NOT NULL DEFAULT 0,
     data JSON NOT NULL,
     is_deleted TINYINT(1) NOT NULL DEFAULT 0,
     status VARCHAR(64) NOT NULL DEFAULT '',
     is_single TINYINT(1) NOT NULL DEFAULT 0,
     INDEX idx_fakeid_create_time (fakeid, create_time),
-    INDEX idx_link (link(191))
+    INDEX idx_link (link(191)),
+    INDEX idx_publish_time (publish_time),
+    INDEX idx_db_time (db_time)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS wx_html (
@@ -100,6 +103,15 @@ const TABLES = [
     file LONGBLOB NOT NULL,
     INDEX idx_fakeid (fakeid)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS wx_auth_keys (
+    auth_key VARCHAR(64) PRIMARY KEY,
+    token VARCHAR(64) NOT NULL,
+    cookies JSON NOT NULL,
+    create_time BIGINT NOT NULL,
+    expire_time BIGINT NOT NULL,
+    INDEX idx_expire_time (expire_time)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
 let initPromise: Promise<void> | null = null;
@@ -136,6 +148,11 @@ async function migrateWxArticles(pool: ReturnType<typeof getMysqlPool>): Promise
   if (!(await columnExists(pool, 'wx_articles', 'publish_time'))) {
     await pool.query('ALTER TABLE wx_articles ADD COLUMN publish_time BIGINT NOT NULL DEFAULT 0 AFTER title');
     await pool.query('UPDATE wx_articles SET publish_time = create_time WHERE publish_time = 0');
+  }
+
+  if (!(await columnExists(pool, 'wx_articles', 'db_time'))) {
+    await pool.query('ALTER TABLE wx_articles ADD COLUMN db_time BIGINT NOT NULL DEFAULT 0 AFTER create_time');
+    await pool.query('UPDATE wx_articles SET db_time = create_time WHERE db_time = 0');
   }
 }
 

@@ -39,6 +39,7 @@ function rowToArticle(row: RowDataPacket): Record<string, unknown> {
   const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
   const createTime = Number(row.create_time);
   const publishTime = row.publish_time != null ? Number(row.publish_time) : createTime;
+  const dbTime = row.db_time != null ? Number(row.db_time) : createTime;
   return {
     ...data,
     fakeid: row.fakeid,
@@ -47,6 +48,7 @@ function rowToArticle(row: RowDataPacket): Record<string, unknown> {
     title: row.title ?? data.title ?? '',
     create_time: createTime,
     publish_time: publishTime,
+    db_time: dbTime,
     is_deleted: !!row.is_deleted,
     _status: row.status,
     _single: !!row.is_single,
@@ -61,18 +63,21 @@ function extractArticleFields(article: Record<string, unknown>) {
     title,
     create_time,
     publish_time,
+    db_time,
     is_deleted,
     _status,
     _single,
     ...rest
   } = article;
   const publishTime = Number(publish_time ?? create_time ?? 0);
+  const dbTime = Number(db_time ?? Math.floor(Date.now() / 1000));
 
   return {
     link: String(link),
     title: String(title ?? ''),
     publishTime,
     createTime: Number(create_time ?? publishTime),
+    dbTime,
     is_deleted,
     _status,
     _single,
@@ -144,6 +149,67 @@ export async function mysqlGetArticles(fakeid: string, beforeCreateTime: number)
       [fakeid, beforeCreateTime]
     );
     return rows.map(rowToArticle);
+  });
+}
+
+export interface ArticleListQuery {
+  fakeid?: string;
+  startTime?: number;
+  endTime?: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface ArticleListResult {
+  items: Record<string, unknown>[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function mysqlGetArticleList(query: ArticleListQuery): Promise<ArticleListResult> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const { fakeid, startTime, endTime, page, pageSize } = query;
+    
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+    
+    if (fakeid) {
+      whereClause += ' AND fakeid = ?';
+      params.push(fakeid);
+    }
+    
+    if (startTime) {
+      whereClause += ' AND publish_time >= ?';
+      params.push(startTime);
+    }
+    
+    if (endTime) {
+      whereClause += ' AND publish_time <= ?';
+      params.push(endTime);
+    }
+    
+    // 查询总数
+    const [countRows] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM wx_articles ${whereClause}`,
+      params
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    
+    // 查询分页数据，按发布时间降序排序
+    const offset = (page - 1) * pageSize;
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM wx_articles ${whereClause} ORDER BY publish_time DESC LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset]
+    );
+    
+    return {
+      items: rows.map(rowToArticle),
+      total,
+      page,
+      pageSize,
+    };
   });
 }
 
@@ -229,17 +295,18 @@ export async function mysqlUpsertArticles(
     for (const article of articles) {
       const aid = String(article.aid);
       const id = `${fakeid}:${aid}`;
-      const { link, title, publishTime, createTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
+      const { link, title, publishTime, createTime, dbTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
 
       await pool.query(
         `INSERT INTO wx_articles
-          (id, fakeid, aid, link, title, publish_time, create_time, data, is_deleted, status, is_single)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, fakeid, aid, link, title, publish_time, create_time, db_time, data, is_deleted, status, is_single)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
           link = VALUES(link),
           title = VALUES(title),
           publish_time = VALUES(publish_time),
           create_time = VALUES(create_time),
+          db_time = COALESCE(wx_articles.db_time, VALUES(db_time)),
           data = VALUES(data),
           is_deleted = VALUES(is_deleted),
           status = VALUES(status),
@@ -252,6 +319,7 @@ export async function mysqlUpsertArticles(
           title,
           publishTime,
           createTime,
+          dbTime,
           JSON.stringify(rest),
           is_deleted ? 1 : 0,
           String(_status ?? ''),
@@ -290,18 +358,19 @@ export async function mysqlPutArticle(
     const fakeid = String(article.fakeid);
     const aid = String(article.aid);
     const key = id ?? `${fakeid}:${aid}`;
-    const { link, title, publishTime, createTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
+    const { link, title, publishTime, createTime, dbTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
 
     const pool = getMysqlPool();
     await pool.query(
       `INSERT INTO wx_articles
-        (id, fakeid, aid, link, title, publish_time, create_time, data, is_deleted, status, is_single)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, fakeid, aid, link, title, publish_time, create_time, db_time, data, is_deleted, status, is_single)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
         link = VALUES(link),
         title = VALUES(title),
         publish_time = VALUES(publish_time),
         create_time = VALUES(create_time),
+        db_time = COALESCE(wx_articles.db_time, VALUES(db_time)),
         data = VALUES(data),
         is_deleted = VALUES(is_deleted),
         status = VALUES(status),
@@ -314,6 +383,7 @@ export async function mysqlPutArticle(
         title,
         publishTime,
         createTime,
+        dbTime,
         JSON.stringify(rest),
         is_deleted ? 1 : 0,
         String(_status ?? ''),
@@ -593,4 +663,116 @@ export async function mysqlPing(): Promise<boolean> {
   const pool = getMysqlPool();
   await pool.query('SELECT 1');
   return true;
+}
+
+// ============ Auth Key 相关操作 ============
+
+export interface AuthKeyRow {
+  auth_key: string;
+  token: string;
+  cookies: Array<Record<string, string | number>>;
+  create_time: number;
+  expire_time: number;
+}
+
+/**
+ * 保存 auth-key 到 MySQL（替换所有旧的，只保留最新的一个）
+ * @param authKey auth-key
+ * @param token 微信 token
+ * @param cookies cookie 数组
+ * @param expireTime 过期时间戳（秒）
+ */
+export async function mysqlSetAuthKey(
+  authKey: string,
+  token: string,
+  cookies: Array<Record<string, string | number>>,
+  expireTime: number
+): Promise<void> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const now = Math.floor(Date.now() / 1000);
+    
+    // 先删除所有旧的 auth-key，只保留最新的一个
+    await pool.query('DELETE FROM wx_auth_keys');
+    
+    // 插入新的 auth-key
+    await pool.query(
+      `INSERT INTO wx_auth_keys (auth_key, token, cookies, create_time, expire_time)
+       VALUES (?, ?, ?, ?, ?)`,
+      [authKey, token, JSON.stringify(cookies), now, expireTime]
+    );
+  });
+}
+
+/**
+ * 获取当前有效的 auth-key（最新的一个）
+ */
+export async function mysqlGetLatestAuthKey(): Promise<AuthKeyRow | null> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM wx_auth_keys WHERE expire_time > ? ORDER BY create_time DESC LIMIT 1',
+      [Math.floor(Date.now() / 1000)]
+    );
+    if (!rows[0]) {
+      return null;
+    }
+    const row = rows[0];
+    return {
+      auth_key: row.auth_key,
+      token: row.token,
+      cookies: typeof row.cookies === 'string' ? JSON.parse(row.cookies) : row.cookies,
+      create_time: Number(row.create_time),
+      expire_time: Number(row.expire_time),
+    };
+  });
+}
+
+/**
+ * 从 MySQL 获取 auth-key
+ * @param authKey
+ */
+export async function mysqlGetAuthKey(authKey: string): Promise<AuthKeyRow | null> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT * FROM wx_auth_keys WHERE auth_key = ? AND expire_time > ?',
+      [authKey, Math.floor(Date.now() / 1000)]
+    );
+    if (!rows[0]) {
+      return null;
+    }
+    const row = rows[0];
+    return {
+      auth_key: row.auth_key,
+      token: row.token,
+      cookies: typeof row.cookies === 'string' ? JSON.parse(row.cookies) : row.cookies,
+      create_time: Number(row.create_time),
+      expire_time: Number(row.expire_time),
+    };
+  });
+}
+
+/**
+ * 删除 auth-key
+ * @param authKey
+ */
+export async function mysqlDeleteAuthKey(authKey: string): Promise<void> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    await pool.query('DELETE FROM wx_auth_keys WHERE auth_key = ?', [authKey]);
+  });
+}
+
+/**
+ * 清理过期的 auth-key
+ */
+export async function mysqlCleanExpiredAuthKeys(): Promise<number> {
+  return withMysql(async () => {
+    const pool = getMysqlPool();
+    const [result] = await pool.query<RowDataPacket[]>('DELETE FROM wx_auth_keys WHERE expire_time <= ?', [
+      Math.floor(Date.now() / 1000),
+    ]);
+    return result.affectedRows ?? 0;
+  });
 }

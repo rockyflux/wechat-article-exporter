@@ -1,74 +1,67 @@
 <script setup lang="ts">
-import { formatDistance } from 'date-fns';
 import { request } from '#shared/utils/request';
 import LoginModal from '~/components/modal/Login.vue';
 import StorageUsage from '~/components/StorageUsage.vue';
 import { IMAGE_PROXY } from '~/config';
 import type { LogoutResponse } from '~/types/types';
 
+interface AuthKeyStatus {
+  code: number;
+  valid: boolean;
+  authKey?: string;
+  createTime?: string;
+  expireTime?: string;
+  remainingHours?: string;
+  isExpired?: boolean;
+  message?: string;
+}
+
 const loginAccount = useLoginAccount();
 const modal = useModal();
 
 const now = ref(new Date());
-const distance = computed(() => {
-  return (
-    loginAccount.value &&
-    formatDistance(new Date(loginAccount.value.expires), now.value, {
-      includeSeconds: true,
-      locale: {
-        formatDistance: function (token, count, options) {
-          if (now.value >= new Date(loginAccount.value.expires)) {
-            window.clearInterval(timer);
-            setTimeout(() => {
-              loginAccount.value = null;
-            }, 0);
-            return '已过期';
-          }
 
-          switch (token) {
-            case 'aboutXHours':
-              return '大约' + count + '个小时';
-            case 'aboutXMonths':
-              return '大约' + count + '个月';
-            case 'aboutXWeeks':
-              return '大约' + count + '周';
-            case 'aboutXYears':
-              return '大约' + count + '年';
-            case 'lessThanXMinutes':
-              return '小于' + count + '分钟';
-            case 'almostXYears':
-              return '接近' + count + '年';
-            case 'halfAMinute':
-              return '半分钟';
-            case 'lessThanXSeconds':
-              return '小于' + count + '秒';
-            case 'overXYears':
-              return '超过' + count + '年';
-            case 'xDays':
-              return count + '天';
-            case 'xHours':
-              return count + '个小时';
-            case 'xMinutes':
-              return count + '分钟';
-            case 'xMonths':
-              return count + '个月';
-            case 'xSeconds':
-              return count + '秒';
-            case 'xWeeks':
-              return count + '周';
-            case 'xYears':
-              return count + '年';
-            default:
-              return 'unknown';
-          }
-        },
-      },
-    })
-  );
+/**
+ * 计算剩余时间，格式：X天 HH:mm
+ */
+const remainingTime = computed(() => {
+  if (!loginAccount.value) {
+    return '';
+  }
+
+  const expires = new Date(loginAccount.value.expires);
+  const diff = expires.getTime() - now.value.getTime();
+
+  if (diff <= 0) {
+    window.clearInterval(timer);
+    setTimeout(() => {
+      loginAccount.value = null;
+    }, 0);
+    return '已过期';
+  }
+
+  // 计算天、时、分
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+  // 格式化显示
+  const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
+  if (days > 0) {
+    return `${days}天 ${timeStr}`;
+  }
+  return timeStr;
 });
+
 const warning = computed(() => {
-  const value = distance.value;
-  return value === '已过期' || value.includes('分钟') || value.includes('秒');
+  if (!loginAccount.value) {
+    return false;
+  }
+  const expires = new Date(loginAccount.value.expires);
+  const diff = expires.getTime() - now.value.getTime();
+  // 小于 1 小时显示警告
+  return diff > 0 && diff < 60 * 60 * 1000;
 });
 
 function login() {
@@ -88,11 +81,46 @@ async function logout() {
   logoutBtnLoading.value = false;
 }
 
+/**
+ * 从服务器获取最新的登录状态
+ * @description 用于同步服务端 MySQL 存储的 auth-key 过期时间
+ */
+async function refreshAuthKeyStatus() {
+  if (!loginAccount.value) {
+    return;
+  }
+
+  try {
+    const status = await $fetch<AuthKeyStatus>('/api/public/v1/authkey');
+    if (status.code === 0 && status.valid && status.expireTime) {
+      // 更新本地存储的过期时间
+      loginAccount.value = {
+        ...loginAccount.value,
+        expires: status.expireTime,
+      };
+    } else if (status.code !== 0 || !status.valid) {
+      // auth-key 无效，清除本地登录状态
+      loginAccount.value = null;
+    }
+  } catch (error) {
+    console.error('获取 auth-key 状态失败:', error);
+  }
+}
+
 let timer: number;
-onMounted(() => {
+onMounted(async () => {
+  // 从服务器获取最新的登录状态
+  await refreshAuthKeyStatus();
+
+  // 启动定时器更新显示（每秒）
   timer = window.setInterval(() => {
     now.value = new Date();
   }, 1000);
+
+  // 每 5 分钟刷新一次服务器状态
+  window.setInterval(() => {
+    refreshAuthKeyStatus();
+  }, 5 * 60 * 1000);
 });
 onUnmounted(() => {
   window.clearInterval(timer);
@@ -130,7 +158,7 @@ onUnmounted(() => {
       </div>
       <div class="text-sm">
         <span>登录信息过期时间还剩: </span>
-        <span class="font-mono" :class="warning ? 'text-rose-500' : 'text-green-500'">{{ distance }}</span>
+        <span class="font-mono" :class="warning ? 'text-rose-500' : 'text-green-500'">{{ remainingTime }}</span>
       </div>
     </div>
     <div v-else>
