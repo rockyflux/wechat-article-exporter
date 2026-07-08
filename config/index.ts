@@ -55,9 +55,9 @@ export const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36 WAE/1.0';
 
 /**
- * 微信公众号上线时间 2012-08-23
+ * 文章同步最早截止时间默认值（配置项，页面日期选择器初始值）
  */
-export const MP_ORIGIN_TIMESTAMP = dayjs('2012-08-23 00:00:00').unix();
+export const MP_ORIGIN_TIMESTAMP = dayjs('2026-01-01 00:00:00').unix();
 
 /**
  * 文章显示类型

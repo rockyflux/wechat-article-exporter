@@ -44,7 +44,6 @@ const modal = useModal();
 const { checkLogin } = useLoginCheck();
 
 const { getSyncTimestamp, getSyncRangeLabel, isSyncAll } = useSyncDeadline();
-const syncToTimestamp = getSyncTimestamp();
 
 const preferences = usePreferences();
 
@@ -125,7 +124,7 @@ async function _load(account: MpAccount, begin: number, loadMore: boolean, promi
     }
   }
 
-  if (articles.at(-1)!.create_time < syncToTimestamp) {
+  if (articles.at(-1)!.create_time < getSyncTimestamp()) {
     // 已同步到配置的时间范围
     loadMore = false;
   }
@@ -482,8 +481,6 @@ function exportAccount() {
     exportBtnLoading.value = false;
   }
 }
-
-const { getActualDateRange } = useSyncDeadline();
 </script>
 
 <template>
@@ -529,8 +526,8 @@ const { getActualDateRange } = useSyncDeadline();
           @click="loadSelectedAccountArticle"
           >同步</UButton
         >
-        <div class="hidden xl:flex flex-1 justify-end">
-          <span class="self-end text-sm text-blue-500 font-medium">同步范围: {{ getActualDateRange() }}</span>
+        <div class="flex flex-1 justify-end min-w-0">
+          <SyncDateRangeControl />
         </div>
       </header>
 

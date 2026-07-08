@@ -1,4 +1,5 @@
 import { db } from './db';
+import { isMysqlStorage, storageGet, storagePut } from './storage-client';
 
 export interface CommentReplyAsset {
   fakeid: string;
@@ -13,6 +14,14 @@ export interface CommentReplyAsset {
  * @param reply 缓存
  */
 export async function updateCommentReplyCache(reply: CommentReplyAsset): Promise<boolean> {
+  if (isMysqlStorage()) {
+    await storagePut('/api/storage/cache', {
+      type: 'comment-reply',
+      payload: reply,
+    });
+    return true;
+  }
+
   return db.transaction('rw', 'comment_reply', async () => {
     await db.comment_reply.put(reply, `${reply.url}:${reply.contentID}`);
     return true;
@@ -25,5 +34,14 @@ export async function updateCommentReplyCache(reply: CommentReplyAsset): Promise
  * @param contentID
  */
 export async function getCommentReplyCache(url: string, contentID: string): Promise<CommentReplyAsset | undefined> {
+  if (isMysqlStorage()) {
+    const row = await storageGet<CommentReplyAsset | null>('/api/storage/cache', {
+      type: 'comment-reply',
+      url,
+      contentID,
+    });
+    return row ?? undefined;
+  }
+
   return db.comment_reply.get(`${url}:${contentID}`);
 }

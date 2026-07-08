@@ -1,5 +1,6 @@
 import type { ArticleMetadata } from '~/utils/download/types';
 import { db } from './db';
+import { isMysqlStorage, storageGet, storagePut } from './storage-client';
 
 export type Metadata = ArticleMetadata & {
   fakeid: string;
@@ -12,6 +13,14 @@ export type Metadata = ArticleMetadata & {
  * @param metadata
  */
 export async function updateMetadataCache(metadata: Metadata): Promise<boolean> {
+  if (isMysqlStorage()) {
+    await storagePut('/api/storage/cache', {
+      type: 'metadata',
+      payload: metadata,
+    });
+    return true;
+  }
+
   return db.transaction('rw', 'metadata', async () => {
     await db.metadata.put(metadata);
     return true;
@@ -23,5 +32,10 @@ export async function updateMetadataCache(metadata: Metadata): Promise<boolean> 
  * @param url
  */
 export async function getMetadataCache(url: string): Promise<Metadata | undefined> {
+  if (isMysqlStorage()) {
+    const row = await storageGet<Metadata | null>('/api/storage/cache', { type: 'metadata', url });
+    return row ?? undefined;
+  }
+
   return db.metadata.get(url);
 }

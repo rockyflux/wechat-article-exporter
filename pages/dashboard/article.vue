@@ -14,7 +14,7 @@ import type {
 import { AgGridVue } from 'ag-grid-vue3';
 import { defu } from 'defu';
 import type { PreviewArticle } from '#components';
-import { durationToSeconds, formatItemShowType, formatTimeStamp, sleep } from '#shared/utils/helpers';
+import { durationToSeconds, formatItemShowType, formatTimeStamp } from '#shared/utils/helpers';
 import { validateHTMLContent } from '#shared/utils/html';
 import GridAlbum from '~/components/grid/Album.vue';
 import GridArticleActions from '~/components/grid/ArticleActions.vue';
@@ -23,10 +23,8 @@ import GridStatusBar from '~/components/grid/StatusBar.vue';
 import AccountSelectorForArticle from '~/components/selector/AccountSelectorForArticle.vue';
 import { isDev, websiteName } from '~/config';
 import { sharedGridOptions } from '~/config/shared-grid-options';
-import { articleDeleted, getArticleCache, updateArticleStatus } from '~/store/v2/article';
-import { getCommentCache } from '~/store/v2/comment';
+import { articleDeleted, getArticleCache, getArticlesDownloadStatus, updateArticleStatus } from '~/store/v2/article';
 import { getDebugCache } from '~/store/v2/debug';
-import { getHtmlCache } from '~/store/v2/html';
 import { type MpAccount } from '~/store/v2/info';
 import { getMetadataCache, type Metadata } from '~/store/v2/metadata';
 import type { Preferences } from '~/types/preferences';
@@ -40,6 +38,11 @@ useHead({
 
 // 当前页面的数据模型
 interface Article extends AppMsgExWithFakeID, Partial<ArticleMetadata> {
+  /**
+   * 发布时间（来自 wx_articles.publish_time）
+   */
+  publish_time?: number;
+
   /**
    * 文章内容是否已下载
    */
@@ -118,12 +121,14 @@ const columnDefs = ref<ColDef[]>([
   },
   {
     headerName: '发布时间',
-    field: 'update_time',
+    field: 'publish_time',
+    valueGetter: p => p.data?.publish_time ?? p.data?.create_time,
     valueFormatter: p => formatTimeStamp(p.value),
     filter: 'agDateColumnFilter',
     filterParams: createDateColumnFilterParams(),
     filterValueGetter: (params: ValueGetterParams) => {
-      return new Date(params.getValue('update_time') * 1000);
+      const publishTime = params.data?.publish_time ?? params.data?.create_time;
+      return new Date(publishTime * 1000);
     },
     minWidth: 180,
     cellClass: 'flex justify-center items-center font-mono',
@@ -357,6 +362,7 @@ function preview(article: Article) {
 }
 
 const loading = ref(false);
+const refreshingStatus = ref(false);
 
 // 只能选择单个账号
 const selectedAccount = ref<MpAccount | undefined>();
@@ -367,31 +373,46 @@ watch(selectedAccount, newVal => {
 
 async function switchTableData(fakeid: string) {
   loading.value = true;
-  const articles: Article[] = [];
   const data = await getArticleCache(fakeid, Math.floor(Date.now() / 1000));
-  for (const article of data) {
-    const contentDownload = (await getHtmlCache(article.link)) !== undefined;
-    const commentDownload = (await getCommentCache(article.link)) !== undefined;
-    const metadata = await getMetadataCache(article.link);
-    if (metadata) {
-      articles.push({
-        ...metadata,
-        ...article,
-        contentDownload: contentDownload,
-        commentDownload: commentDownload,
-      });
-    } else {
-      articles.push({
-        ...article,
-        contentDownload: contentDownload,
-        commentDownload: commentDownload,
-      });
-    }
-  }
-  await sleep(200);
+  const articles: Article[] = data.map(article => ({
+    ...article,
+    publish_time: article.publish_time ?? article.create_time,
+    contentDownload: false,
+    commentDownload: false,
+  }));
   globalRowData = articles.filter(article => (hideDeleted.value ? !article.is_deleted : true));
   gridApi.value?.setGridOption('rowData', globalRowData);
   loading.value = false;
+}
+
+async function refreshDownloadStatus() {
+  if (globalRowData.length === 0) {
+    return;
+  }
+
+  refreshingStatus.value = true;
+  try {
+    const statusMap = await getArticlesDownloadStatus(globalRowData.map(article => article.link));
+    for (const article of globalRowData) {
+      const status = statusMap[article.link];
+      if (!status) {
+        continue;
+      }
+
+      article.contentDownload = status.html;
+      article.commentDownload = status.comment;
+      if (status.metadata) {
+        article.readNum = status.metadata.readNum;
+        article.oldLikeNum = status.metadata.oldLikeNum;
+        article.shareNum = status.metadata.shareNum;
+        article.likeNum = status.metadata.likeNum;
+        article.commentNum = status.metadata.commentNum;
+      }
+      updateRow(article);
+    }
+  } finally {
+    refreshingStatus.value = false;
+  }
 }
 
 function updateRow(article: Article) {
@@ -537,6 +558,14 @@ function copyWechatLink() {
           </div>
         </div>
         <div class="flex items-center space-x-2">
+          <UButton
+            :disabled="!selectedAccount || globalRowData.length === 0"
+            :loading="refreshingStatus"
+            color="white"
+            label="刷新下载状态"
+            icon="i-lucide:refresh-cw"
+            @click="refreshDownloadStatus"
+          />
           <UButton v-if="downloadBtnLoading" color="black" @click="stopDownload">停止</UButton>
           <ButtonGroup
             :items="[

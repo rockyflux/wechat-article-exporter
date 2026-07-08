@@ -1,7 +1,15 @@
 <script setup lang="ts">
+import { isMysqlStorage } from '~/store/v2/storage-client';
+
 const usage = ref('');
+const storageMode = computed(() => (isMysqlStorage() ? 'MySQL 服务端' : '浏览器 IndexedDB'));
 
 async function init() {
+  if (isMysqlStorage()) {
+    usage.value = '数据存储在服务端 MySQL';
+    return;
+  }
+
   const storageUsage = await navigator.storage.estimate();
   const bytes = storageUsage.usage!;
   if (bytes < 1000) {
@@ -28,6 +36,8 @@ onUnmounted(() => {
 
 <template>
   <p class="text-sm">
-    本地数据库占用约为 <span class="text-rose-500">{{ usage }}</span>
+    当前存储：<span class="text-slate-600">{{ storageMode }}</span>，
+    <template v-if="isMysqlStorage()">占用由服务端数据库管理</template>
+    <template v-else>本地数据库占用约为 <span class="text-rose-500">{{ usage }}</span></template>
   </p>
 </template>

@@ -8,6 +8,9 @@
     "build": "nuxt build",
     "preview": "NITRO_PRESET=cloudflare_pages nuxt build && npx wrangler --cwd dist pages dev",
     "format": "biome check --write",
+    "mysql:init": "node scripts/mysql/init.mjs",
+    "mysql:drop": "node scripts/mysql/drop.mjs",
+    "mysql:health": "node scripts/mysql/health.mjs",
     "postinstall": "nuxt prepare",
     "docker:build": "docker build --build-arg VERSION=$npm_package_version -t ghcr.io/wechat-article/wechat-article-exporter:$npm_package_version .",
     "docker:publish": "docker push ghcr.io/wechat-article/wechat-article-exporter:$npm_package_version"
@@ -41,6 +44,7 @@
     "lucide-vue-next": "^0.441.0",
     "mime": "^4.0.4",
     "monaco-editor": "^0.54.0",
+    "mysql2": "^3.22.6",
     "nuxt": "^3.12.3",
     "nuxt-monaco-editor": "1.4.0",
     "nuxt-umami": "3.2.1",

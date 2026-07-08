@@ -1,4 +1,5 @@
 import { db } from './db';
+import { isMysqlStorage, storageGet, storagePut, storagePatch } from './storage-client';
 
 export interface MpAccount {
   fakeid: string;
@@ -25,6 +26,35 @@ export interface MpAccount {
  * @param mpAccount
  */
 export async function updateInfoCache(mpAccount: MpAccount): Promise<boolean> {
+  if (isMysqlStorage()) {
+    const infoCache = await getInfoCache(mpAccount.fakeid);
+    const nextAccount = infoCache
+      ? {
+          ...infoCache,
+          completed: mpAccount.completed ? true : infoCache.completed,
+          count: infoCache.count + mpAccount.count,
+          articles: infoCache.articles + mpAccount.articles,
+          nickname: mpAccount.nickname,
+          round_head_img: mpAccount.round_head_img,
+          total_count: mpAccount.total_count,
+          update_time: Math.round(Date.now() / 1000),
+        }
+      : {
+          fakeid: mpAccount.fakeid,
+          completed: mpAccount.completed,
+          count: mpAccount.count,
+          articles: mpAccount.articles,
+          nickname: mpAccount.nickname,
+          round_head_img: mpAccount.round_head_img,
+          total_count: mpAccount.total_count,
+          create_time: Math.round(Date.now() / 1000),
+          update_time: Math.round(Date.now() / 1000),
+        };
+
+    await storagePut('/api/storage/accounts', nextAccount);
+    return true;
+  }
+
   return db.transaction('rw', 'info', async () => {
     let infoCache = await db.info.get(mpAccount.fakeid);
     if (infoCache) {
@@ -56,6 +86,14 @@ export async function updateInfoCache(mpAccount: MpAccount): Promise<boolean> {
 }
 
 export async function updateLastUpdateTime(fakeid: string): Promise<boolean> {
+  if (isMysqlStorage()) {
+    await storagePatch('/api/storage/accounts', {
+      fakeid,
+      last_update_time: Math.round(Date.now() / 1000),
+    });
+    return true;
+  }
+
   return db.transaction('rw', 'info', async () => {
     let infoCache = await db.info.get(fakeid);
     if (infoCache) {
@@ -71,10 +109,19 @@ export async function updateLastUpdateTime(fakeid: string): Promise<boolean> {
  * @param fakeid
  */
 export async function getInfoCache(fakeid: string): Promise<MpAccount | undefined> {
+  if (isMysqlStorage()) {
+    const account = await storageGet<MpAccount | null>('/api/storage/accounts', { fakeid });
+    return account ?? undefined;
+  }
+
   return db.info.get(fakeid);
 }
 
 export async function getAllInfo(): Promise<MpAccount[]> {
+  if (isMysqlStorage()) {
+    return storageGet<MpAccount[]>('/api/storage/accounts');
+  }
+
   return db.info.toArray();
 }
 

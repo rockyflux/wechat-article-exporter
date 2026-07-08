@@ -9,9 +9,18 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       aggridLicense: process.env.NUXT_AGGRID_LICENSE,
+      storageDriver: process.env.NUXT_STORAGE_DRIVER || 'indexeddb',
       sentry: {
         dsn: process.env.NUXT_SENTRY_DSN,
       },
+    },
+    storageDriver: process.env.NUXT_STORAGE_DRIVER || 'indexeddb',
+    mysql: {
+      host: process.env.MYSQL_HOST || '',
+      port: process.env.MYSQL_PORT || '3306',
+      database: process.env.MYSQL_DATABASE || '',
+      user: process.env.MYSQL_USER || '',
+      password: process.env.MYSQL_PASSWORD || '',
     },
     debugMpRequest: false,
   },

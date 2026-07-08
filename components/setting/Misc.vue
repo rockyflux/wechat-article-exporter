@@ -87,40 +87,15 @@
           同步时间范围:
           <span class="text-xs text-slate-500">(说明: 只能从当前时间开始往前同步)</span>
         </span>
-        <span class="text-sm text-blue-500 font-medium">实际同步范围: {{ getActualDateRange() }}</span>
       </p>
 
-      <div class="flex gap-3">
-        <USelectMenu
-          class="w-1/2"
-          v-model="preferences.syncDateRange"
-          :options="DURATION_OPTIONS"
-          value-attribute="value"
-          option-attribute="label"
-        />
-        <UPopover v-if="preferences.syncDateRange === 'point'" :popper="{ placement: 'bottom-start' }">
-          <UButton color="gray" icon="i-heroicons-calendar-days-20-solid" :label="formatDate()" />
-
-          <template #panel="{ close }">
-            <BaseDatePicker v-model="preferences.syncDatePoint" is-required @close="close" />
-          </template>
-        </UPopover>
-      </div>
+      <SyncDateRangeControl select-class="w-1/2" />
     </div>
   </UCard>
 </template>
 
 <script setup lang="ts">
-import dayjs from 'dayjs';
 import type { Preferences } from '~/types/preferences';
 
-const { getActualDateRange, getSelectOptions } = useSyncDeadline();
-
-const preferences: Ref<Preferences> = usePreferences() as unknown as Ref<Preferences>;
-
-const DURATION_OPTIONS = getSelectOptions();
-
-function formatDate() {
-  return dayjs.unix(preferences.value.syncDatePoint).format('YYYY-MM-DD');
-}
+const preferences = usePreferences() as unknown as Ref<Preferences>;
 </script>

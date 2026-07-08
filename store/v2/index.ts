@@ -1,7 +1,13 @@
 import { db } from './db';
+import { isMysqlStorage, storageDelete } from './storage-client';
 
 // 删除公众号数据
 export async function deleteAccountData(ids: string[]): Promise<void> {
+  if (isMysqlStorage()) {
+    await storageDelete('/api/storage/accounts', { fakeids: ids });
+    return;
+  }
+
   return db.transaction(
     'rw',
     [

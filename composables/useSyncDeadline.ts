@@ -5,9 +5,14 @@ import type { Preferences } from '~/types/preferences';
 export default () => {
   const preferences = usePreferences();
 
+  function getEffectiveSyncDatePoint(): number {
+    const syncDatePoint = (preferences.value as unknown as Preferences).syncDatePoint;
+    return syncDatePoint || MP_ORIGIN_TIMESTAMP;
+  }
+
   function getDeadline(): Dayjs {
     const syncDateRange = (preferences.value as unknown as Preferences).syncDateRange;
-    const syncDatePoint = (preferences.value as unknown as Preferences).syncDatePoint;
+    const syncDatePoint = getEffectiveSyncDatePoint();
 
     const start = dayjs().add(1, 'days').startOf('day');
     switch (syncDateRange) {
@@ -28,16 +33,10 @@ export default () => {
       case '1y':
         return start.subtract(1, 'years');
       case 'point':
-        // 指定绝对时间
-        if (syncDatePoint === 0) {
-          // 等价于all
-          return dayjs.unix(MP_ORIGIN_TIMESTAMP);
-        } else {
-          return dayjs.unix(syncDatePoint);
-        }
+        return dayjs.unix(syncDatePoint);
       case 'all':
       default:
-        return dayjs.unix(MP_ORIGIN_TIMESTAMP);
+        return dayjs.unix(syncDatePoint);
     }
   }
 
@@ -123,11 +122,26 @@ export default () => {
     return syncDateRange === 'all';
   }
 
+  /**
+   * 是否显示起始日期选择器（全部 / 自定义时间）
+   */
+  function showSyncDatePicker(): boolean {
+    const syncDateRange = (preferences.value as unknown as Preferences).syncDateRange;
+    return syncDateRange === 'all' || syncDateRange === 'point';
+  }
+
+  function formatSyncDatePoint(): string {
+    return dayjs.unix(getEffectiveSyncDatePoint()).format('YYYY-MM-DD');
+  }
+
   return {
     getSyncTimestamp,
     getActualDateRange,
     getSelectOptions,
     getSyncRangeLabel,
     isSyncAll,
+    showSyncDatePicker,
+    formatSyncDatePoint,
+    getEffectiveSyncDatePoint,
   };
 };
