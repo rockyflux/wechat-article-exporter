@@ -9,6 +9,7 @@
       <div class="flex flex-wrap">
         <SettingExport />
         <SettingMisc />
+        <SettingAutoTag />
       </div>
       <!--      <div>-->
       <!--        <SettingDisplay />-->

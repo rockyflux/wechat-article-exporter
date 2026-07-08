@@ -1,3 +1,8 @@
+export interface AutoTagRule {
+  tag: string;
+  keywords: string[];
+}
+
 // 偏好设置
 export interface Preferences {
   // 隐藏已删除文章
@@ -20,6 +25,9 @@ export interface Preferences {
 
   syncDateRange: '24h' | '1d' | '3d' | '7d' | '1m' | '3m' | '6m' | '1y' | 'all' | 'point';
   syncDatePoint: number;
+
+  // 自动入库标签规则
+  autoTagRules: AutoTagRule[];
 }
 
 interface ExportConfig {

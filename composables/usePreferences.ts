@@ -21,6 +21,7 @@ const defaultOptions: Preferences = {
   accountSyncSeconds: 3,
   syncDateRange: 'all',
   syncDatePoint: MP_ORIGIN_TIMESTAMP,
+  autoTagRules: [],
 };
 
 // 全局状态变量（模块级，确保跨调用共享）

@@ -1,4 +1,6 @@
 import type { RowDataPacket } from 'mysql2/promise';
+import { buildArticleMatchText, resolveAutoTag, type AutoTagRule } from '~/shared/utils/auto-tag';
+import { getServerPreferences } from '~/server/utils/preferences';
 import { ensureMysqlSchema } from './schema';
 import { getMysqlPool } from './pool';
 
@@ -84,6 +86,16 @@ function extractArticleFields(article: Record<string, unknown>) {
     _single,
     rest,
   };
+}
+
+function resolveTagForArticle(
+  title: string,
+  rest: Record<string, unknown>,
+  rules: AutoTagRule[] | undefined
+): string {
+  const digest = String(rest.digest ?? '');
+  const matchText = buildArticleMatchText(title, digest);
+  return resolveAutoTag(matchText, rules);
 }
 
 export async function mysqlGetAllAccounts(): Promise<MpAccountRow[]> {
@@ -304,22 +316,26 @@ export async function mysqlUpsertArticles(
     let msgCount = 0;
     let articleCount = 0;
     const msgIds = new Set<string>();
+    const preferences = await getServerPreferences();
+    const autoTagRules = preferences.autoTagRules ?? [];
 
     for (const article of articles) {
       const aid = String(article.aid);
       const id = `${fakeid}:${aid}`;
       const { link, title, publishTime, createTime, dbTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
+      const autoTag = resolveTagForArticle(title, rest, autoTagRules);
 
       await pool.query(
         `INSERT INTO wx_articles
-          (id, fakeid, aid, link, title, publish_time, create_time, db_time, data, is_deleted, status, is_single)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, fakeid, aid, link, title, publish_time, create_time, db_time, tag, data, is_deleted, status, is_single)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
           link = VALUES(link),
           title = VALUES(title),
           publish_time = VALUES(publish_time),
           create_time = VALUES(create_time),
           db_time = COALESCE(wx_articles.db_time, VALUES(db_time)),
+          tag = CASE WHEN VALUES(tag) != '' THEN VALUES(tag) ELSE wx_articles.tag END,
           data = VALUES(data),
           is_deleted = VALUES(is_deleted),
           status = VALUES(status),
@@ -333,6 +349,7 @@ export async function mysqlUpsertArticles(
           publishTime,
           createTime,
           dbTime,
+          autoTag,
           JSON.stringify(rest),
           is_deleted ? 1 : 0,
           String(_status ?? ''),
@@ -372,18 +389,21 @@ export async function mysqlPutArticle(
     const aid = String(article.aid);
     const key = id ?? `${fakeid}:${aid}`;
     const { link, title, publishTime, createTime, dbTime, is_deleted, _status, _single, rest } = extractArticleFields(article);
+    const preferences = await getServerPreferences();
+    const autoTag = resolveTagForArticle(title, rest, preferences.autoTagRules ?? []);
 
     const pool = getMysqlPool();
     await pool.query(
       `INSERT INTO wx_articles
-        (id, fakeid, aid, link, title, publish_time, create_time, db_time, data, is_deleted, status, is_single)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, fakeid, aid, link, title, publish_time, create_time, db_time, tag, data, is_deleted, status, is_single)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
         link = VALUES(link),
         title = VALUES(title),
         publish_time = VALUES(publish_time),
         create_time = VALUES(create_time),
         db_time = COALESCE(wx_articles.db_time, VALUES(db_time)),
+        tag = CASE WHEN VALUES(tag) != '' THEN VALUES(tag) ELSE wx_articles.tag END,
         data = VALUES(data),
         is_deleted = VALUES(is_deleted),
         status = VALUES(status),
@@ -397,6 +417,7 @@ export async function mysqlPutArticle(
         publishTime,
         createTime,
         dbTime,
+        autoTag,
         JSON.stringify(rest),
         is_deleted ? 1 : 0,
         String(_status ?? ''),
